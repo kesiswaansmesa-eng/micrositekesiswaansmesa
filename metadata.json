@@ -1,0 +1,6 @@
+{
+  "name": "Microsite Kesiswaan SMKN 1 Jember",
+  "description": "Microsite tautan resmi, portofolio prestasi siswa, portal rekruter, unduh resume, analitik trafik, dan ekspor 1-file HTML Google Sites / Blogspot untuk Kesiswaan SMK Negeri 1 Jember.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
