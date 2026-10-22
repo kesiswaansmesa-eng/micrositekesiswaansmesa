@@ -21,6 +21,14 @@ import { ResumeModal } from './components/ResumeModal';
 import { NotificationManager, triggerSystemPush } from './components/NotificationManager';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { AdminPanel } from './components/AdminPanel';
+import {
+  getAppsScriptUrl,
+  fetchAllFromGoogleSheet,
+  syncAllToGoogleSheet,
+  trackLinkClickInSheet,
+  trackVisitorInSheet,
+  isAutoSyncEnabled
+} from './services/googleSheetService';
 
 import {
   FileText,
@@ -119,6 +127,33 @@ export default function App() {
     }
   }, [darkMode]);
 
+  // Initial Data Fetch from Google Sheet (if configured)
+  useEffect(() => {
+    const appsScriptUrl = getAppsScriptUrl();
+    if (appsScriptUrl) {
+      fetchAllFromGoogleSheet().then(result => {
+        if (result.success && result.data) {
+          if (result.data.links && result.data.links.length > 0) {
+            setLinks(result.data.links);
+            localStorage.setItem('smesa_links_v3', JSON.stringify(result.data.links));
+          }
+          if (result.data.prestasi && result.data.prestasi.length > 0) {
+            setPrestasi(result.data.prestasi);
+            localStorage.setItem('smesa_prestasi_v3', JSON.stringify(result.data.prestasi));
+          }
+          if (result.data.notifications && result.data.notifications.length > 0) {
+            setNotifications(result.data.notifications);
+            localStorage.setItem('smesa_notifs_v3', JSON.stringify(result.data.notifications));
+          }
+        }
+      }).catch(() => {});
+
+      // Non-blocking visitor tracking to Google Sheet
+      const device = window.innerWidth < 768 ? 'Mobile' : (window.innerWidth < 1024 ? 'Tablet' : 'Desktop');
+      trackVisitorInSheet(device, document.referrer);
+    }
+  }, []);
+
   // Persist links
   useEffect(() => {
     localStorage.setItem('smesa_links_v3', JSON.stringify(links));
@@ -149,6 +184,8 @@ export default function App() {
         [link.id]: (prev.linkClicks[link.id] || 0) + 1
       }
     }));
+    // Real-time track in Google Sheet
+    trackLinkClickInSheet(link.id, link.title);
   };
 
   // Handle Resume Download tracking
@@ -170,7 +207,18 @@ export default function App() {
 
   // Broadcast from admin
   const handleBroadcastNotification = (notif: ActivityNotification) => {
-    setNotifications(prev => [notif, ...prev]);
+    setNotifications(prev => {
+      const updated = [notif, ...prev];
+      if (isAutoSyncEnabled() && getAppsScriptUrl()) {
+        syncAllToGoogleSheet({
+          links,
+          prestasi,
+          notifications: updated,
+          analytics
+        }).catch(() => {});
+      }
+      return updated;
+    });
   };
 
   // Reset to initial data
@@ -694,6 +742,8 @@ export default function App() {
         analytics={analytics}
         profile={profile}
         socials={INITIAL_SOCIAL_LINKS}
+        notifications={notifications}
+        onUpdateNotifications={setNotifications}
       />
 
       {/* MODAL 5: DETAIL PRESTASI SISWA POPUP */}

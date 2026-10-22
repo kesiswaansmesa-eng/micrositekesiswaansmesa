@@ -4,7 +4,8 @@ export function generateSingleFileHtml(
   profile: SchoolProfile,
   links: LinkItem[],
   prestasi: PrestasiItem[],
-  socials: SocialLink[]
+  socials: SocialLink[],
+  appsScriptUrl?: string
 ): string {
   const activeLinks = links.filter(l => l.isActive);
   const activePrestasi = prestasi.slice(0, 6);
@@ -277,11 +278,38 @@ export function generateSingleFileHtml(
       themeIcon.textContent = isDark ? '☀️' : '🌙';
     });
 
-    function recordClick(id) {
+    // Google Apps Script Real-Time Cloud Integration
+    const APPS_SCRIPT_URL = "${escapeHtml(appsScriptUrl || '')}";
+
+    function recordClick(id, title) {
       try {
         let stats = JSON.parse(localStorage.getItem('smesa_link_clicks') || '{}');
         stats[id] = (stats[id] || 0) + 1;
         localStorage.setItem('smesa_link_clicks', JSON.stringify(stats));
+        
+        if (APPS_SCRIPT_URL) {
+          fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'trackClick', linkId: id, linkTitle: title || id }),
+            keepalive: true
+          }).catch(function() {});
+        }
+      } catch (e) {}
+    }
+
+    if (APPS_SCRIPT_URL) {
+      try {
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'trackVisit',
+            device: window.innerWidth < 768 ? 'Mobile' : (window.innerWidth < 1024 ? 'Tablet' : 'Desktop'),
+            referrer: document.referrer || 'Direct'
+          }),
+          keepalive: true
+        }).catch(function() {});
       } catch (e) {}
     }
   </script>

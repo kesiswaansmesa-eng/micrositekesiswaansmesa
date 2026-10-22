@@ -48,8 +48,26 @@ import {
   ShieldCheck,
   Calendar,
   MousePointerClick,
-  Users
+  Users,
+  Database,
+  RefreshCw,
+  Send,
+  Wifi,
+  WifiOff,
+  AlertCircle,
+  HelpCircle,
+  Code
 } from 'lucide-react';
+import {
+  getAppsScriptUrl,
+  setAppsScriptUrl,
+  testAppsScriptConnection,
+  fetchAllFromGoogleSheet,
+  syncAllToGoogleSheet,
+  getAppsScriptCode,
+  isAutoSyncEnabled,
+  setAutoSyncEnabled
+} from '../services/googleSheetService';
 
 interface AdminPanelProps {
   isOpen: boolean;
@@ -63,6 +81,8 @@ interface AdminPanelProps {
   analytics: AnalyticsData;
   profile: SchoolProfile;
   socials: SocialLink[];
+  notifications?: ActivityNotification[];
+  onUpdateNotifications?: (notifications: ActivityNotification[]) => void;
 }
 
 const CATEGORY_LABELS: Record<CategoryType, string> = {
@@ -90,7 +110,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onResetData,
   analytics,
   profile,
-  socials
+  socials,
+  notifications = [],
+  onUpdateNotifications
 }) => {
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -101,8 +123,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Active cPanel Tab
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'links' | 'prestasi' | 'broadcast' | 'analytics' | 'export' | 'settings'
+    'overview' | 'links' | 'prestasi' | 'broadcast' | 'analytics' | 'export' | 'googlesheet' | 'settings'
   >('overview');
+
+  // Google Sheets & Apps Script State
+  const [sheetUrl, setSheetUrl] = useState(() => getAppsScriptUrl());
+  const [isTestingSheet, setIsTestingSheet] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isSyncingSheet, setIsSyncingSheet] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<{ success: boolean; message: string } | null>(null);
+  const [autoSync, setAutoSync] = useState(() => isAutoSyncEnabled());
+  const [copiedScript, setCopiedScript] = useState(false);
+  const [sheetSubTab, setSheetSubTab] = useState<'guide' | 'code' | 'schema'>('guide');
 
   // Link Form state
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -201,6 +233,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  // BACKGROUND AUTO-SYNC TO GOOGLE SHEET
+  const triggerBackgroundSync = (
+    currentLinks = links,
+    currentPrestasi = prestasi,
+    currentNotifs = notifications
+  ) => {
+    if (autoSync && sheetUrl) {
+      syncAllToGoogleSheet({
+        links: currentLinks,
+        prestasi: currentPrestasi,
+        notifications: currentNotifs,
+        analytics
+      }).catch(() => {});
+    }
+  };
+
   // LINK HANDLERS
   const handleSaveLink = (e: React.FormEvent) => {
     e.preventDefault();
@@ -212,6 +260,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         ...linkFormData
       } as LinkItem : l);
       onUpdateLinks(updated);
+      triggerBackgroundSync(updated);
       setEditingLinkId(null);
     } else {
       const newLink: LinkItem = {
@@ -227,7 +276,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         badgeText: linkFormData.badgeText || '',
         createdAt: new Date().toISOString().slice(0, 10)
       };
-      onUpdateLinks([newLink, ...links]);
+      const updated = [newLink, ...links];
+      onUpdateLinks(updated);
+      triggerBackgroundSync(updated);
       setIsAddingLink(false);
     }
 
@@ -251,16 +302,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleDeleteLink = (id: string) => {
     if (confirm('Apakah Anda yakin ingin menghapus tautan kesiswaan ini?')) {
-      onUpdateLinks(links.filter(l => l.id !== id));
+      const updated = links.filter(l => l.id !== id);
+      onUpdateLinks(updated);
+      triggerBackgroundSync(updated);
     }
   };
 
   const handleTogglePinLink = (id: string) => {
-    onUpdateLinks(links.map(l => l.id === id ? { ...l, isPinned: !l.isPinned } : l));
+    const updated = links.map(l => l.id === id ? { ...l, isPinned: !l.isPinned } : l);
+    onUpdateLinks(updated);
+    triggerBackgroundSync(updated);
   };
 
   const handleToggleActiveLink = (id: string) => {
-    onUpdateLinks(links.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l));
+    const updated = links.map(l => l.id === id ? { ...l, isActive: !l.isActive } : l);
+    onUpdateLinks(updated);
+    triggerBackgroundSync(updated);
   };
 
   // PRESTASI HANDLERS
@@ -274,6 +331,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         ...prestasiFormData
       } as PrestasiItem : p);
       onUpdatePrestasi(updated);
+      triggerBackgroundSync(links, updated);
       setEditingPrestasiId(null);
     } else {
       const newPrestasi: PrestasiItem = {
@@ -292,7 +350,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         verificationCode: prestasiFormData.verificationCode || `SMESA-${Date.now().toString().slice(-4)}`,
         views: 0
       };
-      onUpdatePrestasi([newPrestasi, ...prestasi]);
+      const updated = [newPrestasi, ...prestasi];
+      onUpdatePrestasi(updated);
+      triggerBackgroundSync(links, updated);
       setIsAddingPrestasi(false);
     }
 
@@ -320,7 +380,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleDeletePrestasi = (id: string) => {
     if (confirm('Hapus entri prestasi siswa ini?')) {
-      onUpdatePrestasi(prestasi.filter(p => p.id !== id));
+      const updated = prestasi.filter(p => p.id !== id);
+      onUpdatePrestasi(updated);
+      triggerBackgroundSync(links, updated);
     }
   };
 
@@ -341,6 +403,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     onBroadcastNotification(notif);
     triggerSystemPush(broadcastTitle, broadcastMessage, broadcastUrl || undefined);
+    triggerBackgroundSync(links, prestasi, [notif, ...notifications]);
 
     setBroadcastSuccess(true);
     setBroadcastTitle('');
@@ -371,8 +434,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     document.body.removeChild(link);
   };
 
-  // EXPORT 1-FILE HTML
-  const singleFileHtmlContent = generateSingleFileHtml(profile, links, prestasi, socials);
+  // EXPORT 1-FILE HTML (Supports Live Google Sheets Sync!)
+  const singleFileHtmlContent = generateSingleFileHtml(profile, links, prestasi, socials, sheetUrl);
 
   const handleCopyHtml = () => {
     navigator.clipboard.writeText(singleFileHtmlContent);
@@ -390,6 +453,78 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // GOOGLE SHEETS & APPS SCRIPT ACTION HANDLERS
+  const handleSaveSheetUrl = () => {
+    setAppsScriptUrl(sheetUrl);
+    setTestResult({ success: true, message: 'URL Google Apps Script berhasil disimpan!' });
+    setTimeout(() => setTestResult(null), 3000);
+  };
+
+  const handleClearSheetUrl = () => {
+    if (confirm('Hapus konfigurasi URL Google Apps Script? (Aplikasi akan beralih ke penyimpanan lokal browser)')) {
+      setAppsScriptUrl('');
+      setSheetUrl('');
+      setTestResult(null);
+      setSyncFeedback(null);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setIsTestingSheet(true);
+    setTestResult(null);
+    const res = await testAppsScriptConnection(sheetUrl);
+    setIsTestingSheet(false);
+    setTestResult(res);
+  };
+
+  const handlePullFromSheet = async () => {
+    setIsSyncingSheet(true);
+    setSyncFeedback(null);
+    const res = await fetchAllFromGoogleSheet();
+    setIsSyncingSheet(false);
+    if (res.success && res.data) {
+      if (res.data.links && res.data.links.length > 0) {
+        onUpdateLinks(res.data.links);
+      }
+      if (res.data.prestasi && res.data.prestasi.length > 0) {
+        onUpdatePrestasi(res.data.prestasi);
+      }
+      if (res.data.notifications && res.data.notifications.length > 0 && onUpdateNotifications) {
+        onUpdateNotifications(res.data.notifications);
+      }
+      setSyncFeedback({ success: true, message: 'Berhasil menarik data tautan & prestasi terbaru dari Google Sheet!' });
+    } else {
+      setSyncFeedback({ success: false, message: res.message || 'Gagal memuat data dari Google Sheet' });
+    }
+    setTimeout(() => setSyncFeedback(null), 5000);
+  };
+
+  const handlePushToSheet = async () => {
+    setIsSyncingSheet(true);
+    setSyncFeedback(null);
+    const res = await syncAllToGoogleSheet({
+      links,
+      prestasi,
+      notifications,
+      analytics
+    });
+    setIsSyncingSheet(false);
+    setSyncFeedback(res);
+    setTimeout(() => setSyncFeedback(null), 5000);
+  };
+
+  const handleToggleAutoSync = () => {
+    const nextVal = !autoSync;
+    setAutoSync(nextVal);
+    setAutoSyncEnabled(nextVal);
+  };
+
+  const handleCopyScriptCode = () => {
+    navigator.clipboard.writeText(getAppsScriptCode());
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 2500);
   };
 
   const totalClicks = Object.values(analytics.linkClicks).reduce((a, b) => a + b, 0);
@@ -563,6 +698,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               >
                 <BarChart3 className="w-4 h-4 shrink-0" />
                 <span>Analitik Pengunjung</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('googlesheet')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-medium transition-all text-left whitespace-nowrap cursor-pointer ${
+                  activeTab === 'googlesheet'
+                    ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Database className="w-4 h-4 shrink-0 text-emerald-500" />
+                  <span>Google Sheet & Backend</span>
+                </div>
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    sheetUrl ? 'bg-emerald-500 ring-2 ring-emerald-500/20' : 'bg-slate-300 dark:bg-slate-600'
+                  }`}
+                  title={sheetUrl ? 'Terhubung ke Google Sheet' : 'Penyimpanan Lokal'}
+                />
               </button>
 
               <button
@@ -1459,6 +1614,352 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl text-xs font-mono overflow-x-auto max-h-96 border border-slate-800 leading-relaxed">
                       <code>{singleFileHtmlContent}</code>
                     </pre>
+                  )}
+                </div>
+              )}
+
+              {/* TAB: GOOGLE SHEETS & APPS SCRIPT BACKEND */}
+              {activeTab === 'googlesheet' && (
+                <div className="space-y-5">
+                  {/* HEADER */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>Database Google Sheet & Backend Apps Script</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Sinkronisasi cloud database kesiswaan tanpa server, terhubung ke spreadsheet Google Drive sekolah
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                        sheetUrl
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                          : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                      }`}>
+                        {sheetUrl ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                        <span>{sheetUrl ? 'Google Sheet Aktif' : 'Penyimpanan Lokal'}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* ENDPOINT CONFIGURATION BOX */}
+                  <div className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        <span>URL Aplikasi Web Google Apps Script (Web App Endpoint)</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        Target Akun: kesiswaansmesa@gmail.com
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="url"
+                        value={sheetUrl}
+                        onChange={(e) => setSheetUrl(e.target.value)}
+                        placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                        className="flex-1 px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleSaveSheetUrl}
+                          className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                          title="Simpan URL Endpoint"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>Simpan</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!sheetUrl || isTestingSheet}
+                          onClick={handleTestConnection}
+                          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                          title="Uji apakah endpoint Apps Script merespons"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isTestingSheet ? 'animate-spin' : ''}`} />
+                          <span>{isTestingSheet ? 'Menguji...' : 'Uji Koneksi'}</span>
+                        </button>
+                        {sheetUrl && (
+                          <button
+                            type="button"
+                            onClick={handleClearSheetUrl}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer"
+                            title="Hapus URL"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Test Result Message */}
+                    {testResult && (
+                      <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                        testResult.success
+                          ? 'bg-emerald-100/70 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                          : 'bg-red-100/70 text-red-800 dark:bg-red-950/60 dark:text-red-300 border border-red-300 dark:border-red-800'
+                      }`}>
+                        {testResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                        <span>{testResult.message}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* DUAL SYNC CONTROLS */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* Pull from Google Sheet */}
+                    <div className="p-4 bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-600">
+                            <Download className="w-4 h-4" />
+                          </div>
+                          <h5 className="text-xs font-bold text-slate-900 dark:text-white">
+                            Tarik Data dari Google Sheet (Pull)
+                          </h5>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Muat pembaruan tautan kesiswaan, prestasi siswa, dan notifikasi yang telah diedit langsung oleh staf di spreadsheet.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!sheetUrl || isSyncingSheet}
+                        onClick={handlePullFromSheet}
+                        className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheet ? 'animate-spin' : ''}`} />
+                        <span>{isSyncingSheet ? 'Sinkronisasi...' : 'Tarik Data dari Google Sheet'}</span>
+                      </button>
+                    </div>
+
+                    {/* Push to Google Sheet */}
+                    <div className="p-4 bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600">
+                            <Send className="w-4 h-4" />
+                          </div>
+                          <h5 className="text-xs font-bold text-slate-900 dark:text-white">
+                            Kirim / Sinkronkan ke Google Sheet (Push)
+                          </h5>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Kirim {links.length} tautan, {prestasi.length} portofolio prestasi, dan ringkasan trafik saat ini untuk disimpan ke sheet database.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={!sheetUrl || isSyncingSheet}
+                        onClick={handlePushToSheet}
+                        className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Kirim Seluruh Data ke Sheet</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sync Feedback Message */}
+                  {syncFeedback && (
+                    <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                      syncFeedback.success
+                        ? 'bg-emerald-100/70 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                        : 'bg-red-100/70 text-red-800 dark:bg-red-950/60 dark:text-red-300 border border-red-300 dark:border-red-800'
+                    }`}>
+                      {syncFeedback.success ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                      <span>{syncFeedback.message}</span>
+                    </div>
+                  )}
+
+                  {/* AUTO-SYNC TOGGLE BAR */}
+                  <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-semibold text-slate-900 dark:text-white block">
+                        Sinkronisasi Otomatis Real-time
+                      </span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Otomatis mengirim data ke Google Sheet setiap kali Anda menambah atau mengedit tautan & prestasi
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleAutoSync}
+                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                        autoSync ? 'bg-emerald-600 justify-end' : 'bg-slate-300 dark:bg-slate-700 justify-start'
+                      }`}
+                    >
+                      <div className="w-4 h-4 rounded-full bg-white shadow-md"></div>
+                    </button>
+                  </div>
+
+                  {/* SUB-TABS: GUIDE vs CODE vs SCHEMA */}
+                  <div className="border-b border-slate-200 dark:border-slate-800 pb-2 flex items-center gap-2 text-xs overflow-x-auto">
+                    <button
+                      type="button"
+                      onClick={() => setSheetSubTab('guide')}
+                      className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        sheetSubTab === 'guide'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      <span>1. Panduan Penerapan (1 Menit)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSheetSubTab('code')}
+                      className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        sheetSubTab === 'code'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <Code className="w-3.5 h-3.5" />
+                      <span>2. Kode Apps Script (Code.gs)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSheetSubTab('schema')}
+                      className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                        sheetSubTab === 'schema'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>3. Struktur Tabel Database</span>
+                    </button>
+                  </div>
+
+                  {/* SUB-TAB 1: GUIDE */}
+                  {sheetSubTab === 'guide' && (
+                    <div className="space-y-3 text-xs text-slate-700 dark:text-slate-300">
+                      <div className="p-4 bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                        <h5 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>Langkah-Langkah Membuat Database Google Sheet Gratis:</span>
+                        </h5>
+
+                        <ol className="list-decimal list-inside space-y-2 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                          <li>
+                            Buka browser dan kunjungi <a href="https://sheets.new" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">sheets.new</a> menggunakan akun Google sekolah (misal: <strong>kesiswaansmesa@gmail.com</strong>).
+                          </li>
+                          <li>
+                            Beri nama spreadsheet Anda di pojok kiri atas: <strong>Database Kesiswaan SMESA</strong>.
+                          </li>
+                          <li>
+                            Klik menu atas: <strong>Ekstensi (Extensions) &gt; Apps Script</strong>.
+                          </li>
+                          <li>
+                            Di editor Apps Script yang terbuka, hapus kode <code>function myFunction() &#123;&#125;</code> bawaan.
+                          </li>
+                          <li>
+                            Buka tab kedua di atas (<strong>2. Kode Apps Script</strong>), klik tombol <strong>"Salin Seluruh Kode Apps Script"</strong>, lalu tempelkan (Ctrl+V) ke editor Apps Script.
+                          </li>
+                          <li>
+                            Klik ikon <strong>Simpan (Disket)</strong> di toolbar atas.
+                          </li>
+                          <li>
+                            Klik tombol biru <strong>Terapkan (Deploy)</strong> di pojok kanan atas &gt; pilih <strong>Penerapan baru (New deployment)</strong>.
+                          </li>
+                          <li>
+                            Klik ikon gerigi di sebelah kiri jenis penerapan &gt; pilih <strong>Aplikasi web (Web app)</strong>:
+                            <ul className="list-disc list-inside ml-4 mt-1 space-y-0.5 text-slate-500 dark:text-slate-400">
+                              <li>Deskripsi: <code>API Kesiswaan SMESA v1</code></li>
+                              <li>Jalankan sebagai: <strong>Saya (kesiswaansmesa@gmail.com)</strong></li>
+                              <li>Siapa yang memiliki akses: <strong className="text-emerald-600">Siapa saja (Anyone)</strong> (Penting agar web kesiswaan dapat membaca data tanpa error login)</li>
+                            </ul>
+                          </li>
+                          <li>
+                            Klik <strong>Terapkan (Deploy)</strong>. Jika muncul perizinan Google, klik <em>Beri Izin (Authorize access) &gt; Advanced &gt; Go to Untitled project (unsafe) &gt; Allow</em>.
+                          </li>
+                          <li>
+                            Salin <strong>URL Aplikasi Web (Web App URL)</strong> yang berakhiran <code>/exec</code>, lalu tempelkan ke kolom URL di bagian atas halaman cPanel ini dan klik <strong>Simpan</strong>!
+                          </li>
+                        </ol>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SUB-TAB 2: CODE.GS */}
+                  {sheetSubTab === 'code' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                          File: <code>Code.gs</code> (Siap pakai, sudah dilengkapi auto-setup tabel)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyScriptCode}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                        >
+                          {copiedScript ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedScript ? 'Kode Tersalin!' : 'Salin Seluruh Kode Apps Script'}</span>
+                        </button>
+                      </div>
+
+                      <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl text-[11px] font-mono overflow-x-auto max-h-[380px] border border-slate-800 leading-relaxed selection:bg-emerald-600 selection:text-white">
+                        <code>{getAppsScriptCode()}</code>
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* SUB-TAB 3: DATABASE SCHEMA */}
+                  {sheetSubTab === 'schema' && (
+                    <div className="space-y-3 text-xs">
+                      <p className="text-slate-500 dark:text-slate-400 text-[11px]">
+                        Saat script dijalankan pertama kali, Google Apps Script akan secara otomatis membuat 5 tab sheet berikut dengan header kolom yang rapi:
+                      </p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-3 bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                          <span className="font-bold text-slate-900 dark:text-white block mb-1">
+                            📄 Tab 1: Links (Daftar Tautan)
+                          </span>
+                          <p className="text-[10px] text-slate-500 font-mono break-words leading-relaxed">
+                            id, title, subtitle, url, category, iconName, isPinned, isActive, clickCount, badgeText, createdAt
+                          </p>
+                        </div>
+
+                        <div className="p-3 bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                          <span className="font-bold text-slate-900 dark:text-white block mb-1">
+                            🏆 Tab 2: Prestasi (SIPRES Siswa)
+                          </span>
+                          <p className="text-[10px] text-slate-500 font-mono break-words leading-relaxed">
+                            id, title, studentName, studentClass, major, competitionLevel, rank, year, eventDate, organizer, mentorTeacher, verificationCode, views
+                          </p>
+                        </div>
+
+                        <div className="p-3 bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                          <span className="font-bold text-slate-900 dark:text-white block mb-1">
+                            🔔 Tab 3: Notifikasi (Kegiatan & Agenda)
+                          </span>
+                          <p className="text-[10px] text-slate-500 font-mono break-words leading-relaxed">
+                            id, title, message, category, timestamp, isRead, actionUrl
+                          </p>
+                        </div>
+
+                        <div className="p-3 bg-white dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700">
+                          <span className="font-bold text-slate-900 dark:text-white block mb-1">
+                            📊 Tab 4 & 5: Analitik & Log_Pengunjung
+                          </span>
+                          <p className="text-[10px] text-slate-500 font-mono break-words leading-relaxed">
+                            Analitik: totalViews, uniqueVisitors, resumeDownloads<br/>
+                            Log_Pengunjung: Timestamp, Device, Referrer, UserAgent
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
