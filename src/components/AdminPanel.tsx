@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LinkItem,
@@ -56,7 +56,13 @@ import {
   WifiOff,
   AlertCircle,
   HelpCircle,
-  Code
+  Code,
+  Building2,
+  MapPin,
+  UserCheck,
+  GraduationCap,
+  Phone,
+  Mail
 } from 'lucide-react';
 import {
   getAppsScriptUrl,
@@ -80,6 +86,7 @@ interface AdminPanelProps {
   onResetData: () => void;
   analytics: AnalyticsData;
   profile: SchoolProfile;
+  onUpdateProfile: (profile: SchoolProfile) => void;
   socials: SocialLink[];
   notifications?: ActivityNotification[];
   onUpdateNotifications?: (notifications: ActivityNotification[]) => void;
@@ -110,6 +117,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onResetData,
   analytics,
   profile,
+  onUpdateProfile,
   socials,
   notifications = [],
   onUpdateNotifications
@@ -120,6 +128,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   });
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+
+  // Profile Form state (Pengaturan Sistem)
+  const [profileForm, setProfileForm] = useState<SchoolProfile>(profile);
+  const [profileSavedNotice, setProfileSavedNotice] = useState(false);
+
+  // Sync profileForm if profile updates
+  useEffect(() => {
+    setProfileForm(profile);
+  }, [profile]);
 
   // Active cPanel Tab
   const [activeTab, setActiveTab] = useState<
@@ -491,10 +508,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       if (res.data.prestasi && res.data.prestasi.length > 0) {
         onUpdatePrestasi(res.data.prestasi);
       }
+      if (res.data.profile) {
+        onUpdateProfile(res.data.profile);
+      }
       if (res.data.notifications && res.data.notifications.length > 0 && onUpdateNotifications) {
         onUpdateNotifications(res.data.notifications);
       }
-      setSyncFeedback({ success: true, message: 'Berhasil menarik data tautan & prestasi terbaru dari Google Sheet!' });
+      setSyncFeedback({ success: true, message: 'Berhasil menarik data tautan, profil & prestasi terbaru dari Google Sheet!' });
     } else {
       setSyncFeedback({ success: false, message: res.message || 'Gagal memuat data dari Google Sheet' });
     }
@@ -508,11 +528,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       links,
       prestasi,
       notifications,
-      analytics
+      analytics,
+      profile: profileForm
     });
     setIsSyncingSheet(false);
     setSyncFeedback(res);
     setTimeout(() => setSyncFeedback(null), 5000);
+  };
+
+  // Profile Save & Reset Handlers
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    onUpdateProfile(profileForm);
+    setProfileSavedNotice(true);
+    setTimeout(() => setProfileSavedNotice(false), 3500);
+
+    if (isAutoSyncEnabled() && getAppsScriptUrl()) {
+      syncAllToGoogleSheet({
+        links,
+        prestasi,
+        notifications,
+        analytics,
+        profile: profileForm
+      }).catch(() => {});
+    }
+  };
+
+  const handleResetProfileForm = () => {
+    setProfileForm(profile);
   };
 
   const handleToggleAutoSync = () => {
@@ -553,7 +596,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   v2.6
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">SMK Negeri 1 Jember · Jl. Jambu No.17 Patrang</p>
+              <p className="text-[11px] text-slate-400">{profile.name} · {profile.address}</p>
             </div>
           </div>
 
@@ -1964,37 +2007,421 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </div>
               )}
 
-              {/* TAB 7: SETTINGS & RESET */}
+              {/* TAB 7: SETTINGS & IDENTITAS LEMBAGA (EDIT FASILITAS) */}
               {activeTab === 'settings' && (
-                <div className="max-w-md mx-auto space-y-4">
-                  <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
-                    <h5 className="font-bold text-slate-900 dark:text-white">Identitas Resmi Terdaftar</h5>
-                    <div className="space-y-1.5 text-slate-600 dark:text-slate-300 text-[11px]">
-                      <div><strong>Nama:</strong> {profile.name} ({profile.shortName})</div>
-                      <div><strong>Alamat:</strong> {profile.address} - {profile.city}</div>
-                      <div><strong>NPSN:</strong> {profile.npsn} ({profile.accreditation})</div>
-                      <div><strong>Logo URL:</strong> <span className="font-mono text-[10px] break-all">{profile.logoUrl}</span></div>
+                <div className="max-w-3xl mx-auto space-y-6">
+                  
+                  {/* HEADER */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-blue-600" />
+                        <span>Pengaturan Sistem & Identitas Lembaga</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        Kelola keterangan nama sekolah/lembaga, alamat resmi, nama Wakil Kepala Sekolah bidang kesiswaan, dan kontak.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-1 rounded-lg font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>Tersinkronisasi Real-Time</span>
+                      </span>
                     </div>
                   </div>
 
-                  <div className="p-5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
-                    <h5 className="font-bold text-slate-900 dark:text-white">Pulihkan Data Awal Kesiswaan</h5>
-                    <p className="text-slate-500 dark:text-slate-400 text-[11px]">
-                      Kembalikan susunan tautan dan data prestasi ke setelan awal bawaan Kesiswaan SMESA.
-                    </p>
-                    <button
-                      onClick={() => {
-                        if (confirm('Kembalikan semua data ke setelan awal resmi SMESA?')) {
-                          onResetData();
-                          alert('Data berhasil dipulihkan!');
-                        }
-                      }}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Reset ke Data Awal SMESA</span>
-                    </button>
-                  </div>
+                  {/* SUCCESS NOTIFICATION BANNER */}
+                  <AnimatePresence>
+                    {profileSavedNotice && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        className="p-3.5 bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-700 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-800 dark:text-emerald-200 shadow-xs"
+                      >
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div className="flex-1">
+                          <span className="font-bold">Berhasil Disimpan!</span> Data identitas lembaga, alamat, dan pejabat kesiswaan telah diperbarui dan diterapkan ke seluruh tampilan microsite serta dokumen resume siswa.
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* EDIT FORM */}
+                  <form onSubmit={handleSaveProfile} className="space-y-6">
+                    
+                    {/* BAGIAN 1: IDENTITAS LEMBAGA & PEJABAT RESMI */}
+                    <div className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700/60 pb-2">
+                        <GraduationCap className="w-4 h-4 text-blue-600" />
+                        <span>1. Nama Lembaga & Pejabat Kesiswaan</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Nama Lembaga / Sekolah Resmi *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={profileForm.name}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, name: e.target.value }))}
+                            placeholder="Contoh: SMK Negeri 1 Jember"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
+                          <span className="text-[10px] text-slate-400 mt-0.5 block">
+                            Ditampilkan pada judul utama microsite dan kop dokumen.
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Nama Singkat / Brand Lembaga *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={profileForm.shortName}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, shortName: e.target.value }))}
+                            placeholder="Contoh: Kesiswaan SMESA"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
+                          <span className="text-[10px] text-slate-400 mt-0.5 block">
+                            Singkatan sekolah (misal: SMESA) untuk tampilan mobile & badge.
+                          </span>
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-bold text-blue-700 dark:text-blue-300 mb-1 flex items-center gap-1.5">
+                            <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Nama Wakil Kepala Sekolah Bidang Kesiswaan (Waka Kesiswaan) *</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={profileForm.headOfKesiswaan}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, headOfKesiswaan: e.target.value }))}
+                            placeholder="Contoh: Dra. Hj. Sri Wahyuni, M.Pd."
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 shadow-xs"
+                          />
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
+                            Nama pejabat resmi ini akan tercetak sebagai penandatangan pada dokumen <strong>Resume Kesiswaan</strong> dan rekam jejak sertifikat prestasi siswa.
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Nama Kepala Sekolah
+                          </label>
+                          <input
+                            type="text"
+                            value={profileForm.headmaster}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, headmaster: e.target.value }))}
+                            placeholder="Contoh: Drs. H. Sri Hartono, M.Pd."
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Slogan / Visi Pembinaan Kesiswaan
+                          </label>
+                          <input
+                            type="text"
+                            value={profileForm.tagline}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, tagline: e.target.value }))}
+                            placeholder="Contoh: Membina Generasi Unggul, Berkarakter Kuat..."
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BAGIAN 2: KETERANGAN ALAMAT LENGKAP */}
+                    <div className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700/60 pb-2">
+                        <MapPin className="w-4 h-4 text-emerald-600" />
+                        <span>2. Keterangan Alamat Sekolah</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div className="sm:col-span-3">
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Alamat Lengkap / Nama Jalan & Nomor *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={profileForm.address}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, address: e.target.value }))}
+                            placeholder="Contoh: Jl. Jambu No.17 Patrang"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          />
+                          <span className="text-[10px] text-slate-400 mt-0.5 block">
+                            Dicantumkan pada header halaman publik dan footer hak cipta microsite.
+                          </span>
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Kota / Kabupaten *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={profileForm.city}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, city: e.target.value }))}
+                            placeholder="Contoh: Jember"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Kode Pos
+                          </label>
+                          <input
+                            type="text"
+                            value={profileForm.postalCode}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, postalCode: e.target.value }))}
+                            placeholder="68118"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BAGIAN 3: KONTAK & MEDIA RESMI KESISWAAN */}
+                    <div className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700/60 pb-2">
+                        <Phone className="w-4 h-4 text-purple-600" />
+                        <span>3. Kontak Resmi & Kanal Layanan Siswa</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            No. WhatsApp Layanan Kesiswaan
+                          </label>
+                          <input
+                            type="text"
+                            value={profileForm.whatsappKesiswaan}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, whatsappKesiswaan: e.target.value }))}
+                            placeholder="Contoh: 6281233550412"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Email Resmi Kesiswaan
+                          </label>
+                          <input
+                            type="email"
+                            value={profileForm.email}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
+                            placeholder="Contoh: kesiswaansmesa@gmail.com"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Nomor Telepon Sekolah
+                          </label>
+                          <input
+                            type="text"
+                            value={profileForm.phone}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, phone: e.target.value }))}
+                            placeholder="Contoh: (0331) 335041"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Alamat Website Sekolah
+                          </label>
+                          <input
+                            type="url"
+                            value={profileForm.website}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, website: e.target.value }))}
+                            placeholder="https://smkn1jember.sch.id"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BAGIAN 4: LEGALITAS, STATISTIK & LOGO SEKOLAH */}
+                    <div className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700/60 pb-2">
+                        <ShieldCheck className="w-4 h-4 text-amber-500" />
+                        <span>4. Legalitas, Metrik & URL Logo Sekolah</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            NPSN Sekolah
+                          </label>
+                          <input
+                            type="text"
+                            value={profileForm.npsn}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, npsn: e.target.value }))}
+                            placeholder="20523847"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Akreditasi Sekolah
+                          </label>
+                          <input
+                            type="text"
+                            value={profileForm.accreditation}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, accreditation: e.target.value }))}
+                            placeholder="Akreditasi A (Unggul)"
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Total Siswa Aktif
+                          </label>
+                          <input
+                            type="number"
+                            value={profileForm.totalStudents}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, totalStudents: parseInt(e.target.value) || 0 }))}
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            Total Ekskul & Organisasi
+                          </label>
+                          <input
+                            type="number"
+                            value={profileForm.totalEkskul}
+                            onChange={(e) => setProfileForm(prev => ({ ...prev, totalEkskul: parseInt(e.target.value) || 0 }))}
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white"
+                          />
+                        </div>
+
+                        {/* URL LOGO WITH LIVE PREVIEW */}
+                        <div className="sm:col-span-4 pt-1">
+                          <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            URL Gambar Logo Sekolah (PNG / SVG)
+                          </label>
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-1 flex items-center justify-center shrink-0 shadow-xs overflow-hidden">
+                              <img
+                                src={profileForm.logoUrl || "https://iili.io/nODPK6g.md.png"}
+                                alt="Pratinjau Logo"
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            </div>
+                            <input
+                              type="url"
+                              value={profileForm.logoUrl || ''}
+                              onChange={(e) => setProfileForm(prev => ({ ...prev, logoUrl: e.target.value }))}
+                              placeholder="https://iili.io/nODPK6g.md.png"
+                              className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            />
+                          </div>
+                          <span className="text-[10px] text-slate-400 mt-1 block">
+                            Logo bawaan: <code className="bg-slate-200/60 dark:bg-slate-800 px-1 py-0.5 rounded text-[10px]">https://iili.io/nODPK6g.md.png</code>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* LIVE PREVIEW BOX */}
+                    <div className="p-4 bg-gradient-to-br from-blue-50/80 to-indigo-50/80 dark:from-slate-800/60 dark:to-slate-800/30 rounded-2xl border border-blue-200 dark:border-slate-700 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
+                          <Eye className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Pratinjau Langsung Identitas & Tanda Tangan:</span>
+                        </span>
+                        <span className="text-[10px] text-slate-500">Live Render</span>
+                      </div>
+
+                      <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-1 flex items-center justify-center shrink-0">
+                            <img
+                              src={profileForm.logoUrl || "https://iili.io/nODPK6g.md.png"}
+                              alt="Logo"
+                              className="w-full h-full object-contain"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white">
+                              {profileForm.name} <span className="text-slate-400 font-normal">({profileForm.shortName})</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              {profileForm.address} - {profileForm.city}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-left sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-800 w-full sm:w-auto">
+                          <span className="text-[10px] text-slate-400 block">Waka Bidang Kesiswaan:</span>
+                          <span className="font-bold text-blue-600 dark:text-blue-400 text-xs">
+                            {profileForm.headOfKesiswaan}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ACTION BUTTONS */}
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button
+                          type="submit"
+                          className="flex-1 sm:flex-none px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <Save className="w-4 h-4" />
+                          <span>Simpan Perubahan Identitas Lembaga</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleResetProfileForm}
+                          className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                          title="Batal dan pulihkan ke data tersimpan"
+                        >
+                          Batal
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm('Kembalikan semua data (link, prestasi, notifikasi, dan profil sekolah) ke setelan awal resmi SMKN 1 Jember?')) {
+                            onResetData();
+                            alert('Semua data kesiswaan berhasil dipulihkan ke bawaan awal SMESA!');
+                          }
+                        }}
+                        className="w-full sm:w-auto px-3.5 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-red-200 dark:border-red-900/50"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Reset ke Data Awal SMESA</span>
+                      </button>
+                    </div>
+
+                  </form>
+
                 </div>
               )}
 

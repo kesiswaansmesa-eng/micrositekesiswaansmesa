@@ -7,7 +7,7 @@
  * langsung ke Google Sheets sebagai Database Relasional/NoSQL Real-Time.
  */
 
-import { LinkItem, PrestasiItem, ActivityNotification, AnalyticsData } from '../types';
+import { LinkItem, PrestasiItem, ActivityNotification, AnalyticsData, SchoolProfile } from '../types';
 
 export const APPS_SCRIPT_STORAGE_KEY = 'smesa_apps_script_url';
 export const APPS_SCRIPT_AUTO_SYNC_KEY = 'smesa_apps_script_auto_sync';
@@ -104,6 +104,7 @@ export async function fetchAllFromGoogleSheet(): Promise<{
     prestasi?: PrestasiItem[];
     notifications?: ActivityNotification[];
     analytics?: Partial<AnalyticsData>;
+    profile?: SchoolProfile;
   };
   message?: string;
 }> {
@@ -146,6 +147,7 @@ export async function syncAllToGoogleSheet(payload: {
   prestasi: PrestasiItem[];
   notifications: ActivityNotification[];
   analytics?: AnalyticsData;
+  profile?: SchoolProfile;
 }): Promise<{ success: boolean; message: string }> {
   const endpoint = getAppsScriptUrl().trim();
   if (!endpoint) {
@@ -273,6 +275,7 @@ var SHEET_PRESTASI = "Prestasi";
 var SHEET_NOTIFIKASI = "Notifikasi";
 var SHEET_ANALITIK = "Analitik";
 var SHEET_VISITORS = "Log_Pengunjung";
+var SHEET_PROFIL = "Profil_Sekolah";
 
 /**
  * Handle Request GET (Ambil Data)
@@ -298,7 +301,8 @@ function doGet(e) {
           links: getSheetDataAsJson(ss.getSheetByName(SHEET_LINKS)),
           prestasi: getSheetDataAsJson(ss.getSheetByName(SHEET_PRESTASI)),
           notifications: getSheetDataAsJson(ss.getSheetByName(SHEET_NOTIFIKASI)),
-          analytics: getAnalyticsSummary(ss)
+          analytics: getAnalyticsSummary(ss),
+          profile: getProfileData(ss.getSheetByName(SHEET_PROFIL))
         },
         timestamp: new Date().toISOString()
       };
@@ -316,6 +320,11 @@ function doGet(e) {
       response = {
         status: "success",
         data: getSheetDataAsJson(ss.getSheetByName(SHEET_NOTIFIKASI))
+      };
+    } else if (action === "getProfile") {
+      response = {
+        status: "success",
+        data: getProfileData(ss.getSheetByName(SHEET_PROFIL))
       };
     } else {
       response = {
@@ -358,6 +367,9 @@ function doPost(e) {
       }
       if (data.notifications && Array.isArray(data.notifications)) {
         saveJsonToSheet(ss.getSheetByName(SHEET_NOTIFIKASI), data.notifications);
+      }
+      if (data.profile) {
+        saveProfileToSheet(ss.getSheetByName(SHEET_PROFIL), data.profile);
       }
       if (data.analytics) {
         updateAnalyticsSummary(ss, data.analytics);
@@ -582,6 +594,38 @@ function ensureSheetsExist(ss) {
     vSheet.appendRow(["Timestamp", "Device", "Referrer", "UserAgent"]);
     vSheet.getRange(1, 1, 1, 4).setFontWeight("bold").setBackground("#e2e8f0");
   }
+
+  // 6. Tab Profil_Sekolah
+  var profSheet = ss.getSheetByName(SHEET_PROFIL);
+  if (!profSheet) {
+    profSheet = ss.insertSheet(SHEET_PROFIL);
+    profSheet.appendRow(["name", "shortName", "tagline", "npsn", "accreditation", "address", "city", "postalCode", "phone", "whatsappKesiswaan", "email", "website", "headOfKesiswaan", "headmaster", "totalStudents", "totalEkskul", "logoUrl"]);
+    profSheet.appendRow(["SMK Negeri 1 Jember", "Kesiswaan SMESA", "Membina Generasi Unggul, Berkarakter Kuat, Mandiri & Berprestasi", "20523847", "Akreditasi A (Unggul)", "Jl. Jambu No.17 Patrang", "Jember", "68118", "(0331) 335041", "6281233550412", "kesiswaansmesa@gmail.com", "https://smkn1jember.sch.id", "Dra. Hj. Sri Wahyuni, M.Pd.", "Drs. H. Sri Hartono, M.Pd.", 2450, 24, "https://iili.io/nODPK6g.md.png"]);
+    profSheet.getRange(1, 1, 1, 17).setFontWeight("bold").setBackground("#e2e8f0");
+  }
+}
+
+function getProfileData(sheet) {
+  if (!sheet) return null;
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return null;
+  var headers = data[0];
+  var values = data[1];
+  var prof = {};
+  for (var i = 0; i < headers.length; i++) {
+    prof[headers[i]] = values[i];
+  }
+  return prof;
+}
+
+function saveProfileToSheet(sheet, profile) {
+  if (!sheet || !profile) return;
+  var headers = ["name", "shortName", "tagline", "npsn", "accreditation", "address", "city", "postalCode", "phone", "whatsappKesiswaan", "email", "website", "headOfKesiswaan", "headmaster", "totalStudents", "totalEkskul", "logoUrl"];
+  var row = headers.map(function(h) { return profile[h] !== undefined ? profile[h] : ""; });
+  sheet.clearContents();
+  sheet.appendRow(headers);
+  sheet.appendRow(row);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e2e8f0");
 }
 `;
 }

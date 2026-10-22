@@ -141,7 +141,7 @@ export function generateSingleFileHtml(
         <span aria-hidden="true">·</span>
         <span>${profile.accreditation}</span>
         <span aria-hidden="true">·</span>
-        <span>Jl. Jambu No.17 Patrang - Jember</span>
+        <span>${escapeHtml(profile.address)} - ${escapeHtml(profile.city)}</span>
       </div>
 
       <!-- QUICK STATS -->
@@ -250,8 +250,8 @@ export function generateSingleFileHtml(
         ict@kesiswaan20226
       </p>
       <p class="text-[11px] text-slate-400 leading-relaxed">
-        &copy; 2026 Biro Kesiswaan SMK Negeri 1 Jember (SMESA).<br/>
-        Jl. Jambu No.17 Patrang - Jember | NPSN: ${profile.npsn}
+        &copy; 2026 Biro Kesiswaan ${escapeHtml(profile.name)} (${escapeHtml(profile.shortName)}).<br/>
+        ${escapeHtml(profile.address)} - ${escapeHtml(profile.city)} | NPSN: ${profile.npsn}
       </p>
     </div>
 

@@ -69,7 +69,13 @@ export default function App() {
   });
 
   // Core Data States (persisted in localStorage for real-time reactivity)
-  const [profile] = useState<SchoolProfile>(INITIAL_SCHOOL_PROFILE);
+  const [profile, setProfile] = useState<SchoolProfile>(() => {
+    const saved = localStorage.getItem('smesa_profile_v3');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return INITIAL_SCHOOL_PROFILE;
+  });
 
   const [links, setLinks] = useState<LinkItem[]>(() => {
     const saved = localStorage.getItem('smesa_links_v3');
@@ -133,6 +139,10 @@ export default function App() {
     if (appsScriptUrl) {
       fetchAllFromGoogleSheet().then(result => {
         if (result.success && result.data) {
+          if (result.data.profile) {
+            setProfile(result.data.profile);
+            localStorage.setItem('smesa_profile_v3', JSON.stringify(result.data.profile));
+          }
           if (result.data.links && result.data.links.length > 0) {
             setLinks(result.data.links);
             localStorage.setItem('smesa_links_v3', JSON.stringify(result.data.links));
@@ -153,6 +163,11 @@ export default function App() {
       trackVisitorInSheet(device, document.referrer);
     }
   }, []);
+
+  // Persist profile
+  useEffect(() => {
+    localStorage.setItem('smesa_profile_v3', JSON.stringify(profile));
+  }, [profile]);
 
   // Persist links
   useEffect(() => {
@@ -223,10 +238,12 @@ export default function App() {
 
   // Reset to initial data
   const handleResetData = () => {
+    setProfile(INITIAL_SCHOOL_PROFILE);
     setLinks(INITIAL_LINKS);
     setPrestasi(INITIAL_PRESTASI);
     setNotifications(INITIAL_NOTIFICATIONS);
     setAnalytics(INITIAL_ANALYTICS);
+    localStorage.removeItem('smesa_profile_v3');
     localStorage.removeItem('smesa_links_v3');
     localStorage.removeItem('smesa_prestasi_v3');
     localStorage.removeItem('smesa_notifs_v3');
@@ -315,8 +332,8 @@ export default function App() {
                 }}
               />
             </div>
-            <span className="hidden sm:inline">Kesiswaan SMKN 1 Jember</span>
-            <span className="sm:hidden">Kesiswaan SMESA</span>
+            <span className="hidden sm:inline">Kesiswaan {profile.name}</span>
+            <span className="sm:hidden">{profile.shortName}</span>
           </a>
 
           {/* ZONE 2: Concise Nav Links (Clean Public View) */}
@@ -409,17 +426,17 @@ export default function App() {
           {/* LOGO BADGE */}
           <div className="relative inline-block mb-3.5">
             <motion.a
-              href="https://freeimage.host/i/nODPK6g"
+              href={profile.logoUrl || "https://freeimage.host/i/nODPK6g"}
               target="_blank"
               rel="noopener noreferrer"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.96 }}
               className="w-24 h-24 mx-auto rounded-3xl bg-white dark:bg-slate-900 p-2 shadow-md border border-slate-200/80 dark:border-slate-800 flex items-center justify-center overflow-hidden cursor-pointer block"
-              title="Logo Resmi Kesiswaan SMK Negeri 1 Jember"
+              title={`Logo Resmi ${profile.name}`}
             >
               <img
-                src="https://iili.io/nODPK6g.md.png"
-                alt="nODPK6g.md.png"
+                src={profile.logoUrl || "https://iili.io/nODPK6g.md.png"}
+                alt={`Logo ${profile.name}`}
                 referrerPolicy="no-referrer"
                 className="w-full h-full object-contain"
                 onError={(e) => {
@@ -451,7 +468,7 @@ export default function App() {
             <span aria-hidden="true">·</span>
             <span>{profile.accreditation}</span>
             <span aria-hidden="true">·</span>
-            <span>Jl. Jambu No.17 Patrang - Jember</span>
+            <span>{profile.address} - {profile.city}</span>
           </div>
 
           {/* 3-COLUMN QUANTITATIVE RIGOR METRICS */}
@@ -695,8 +712,8 @@ export default function App() {
             ict@kesiswaan20226
           </p>
           <p className="text-[11px] leading-relaxed">
-            &copy; 2026 Biro Kesiswaan SMK Negeri 1 Jember (SMESA).<br/>
-            Jl. Jambu No.17 Patrang - Jember | NPSN: {profile.npsn}
+            &copy; 2026 Biro Kesiswaan {profile.name} ({profile.shortName}).<br/>
+            {profile.address} - {profile.city} | NPSN: {profile.npsn}
           </p>
         </footer>
 
@@ -741,6 +758,7 @@ export default function App() {
         onResetData={handleResetData}
         analytics={analytics}
         profile={profile}
+        onUpdateProfile={setProfile}
         socials={INITIAL_SOCIAL_LINKS}
         notifications={notifications}
         onUpdateNotifications={setNotifications}
